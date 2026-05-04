@@ -140,12 +140,18 @@ def xmltv_timestamp(iso_str: str) -> str:
     return f"{dt_clean} {sign}{offset_clean}"
 
 
-def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None, logos: dict[str, str] | None = None) -> bytes:
+def _proxy_url(base_url: str, url: str) -> str:
+    """Return url routed through the local /proxy endpoint."""
+    return base_url + "/proxy?url=" + urllib.parse.quote(url, safe="")
+
+
+def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None, logos: dict[str, str] | None = None, base_url: str = "") -> bytes:
     """Build XMLTV XML.
 
     dr_to_key: optional {dr_api_channel_id -> stream_key} rename map so that
     channel ids in the output match the tvg-id values in the M3U playlist.
     logos: optional {stream_key -> logo_url} for channel icon elements.
+    base_url: if set, logo and programme image URLs are routed through /proxy.
     """
     if dr_to_key is None:
         dr_to_key = {}
@@ -187,7 +193,8 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
         dn = ET.SubElement(ch_el, "display-name")
         dn.text = cname
         if cid in logos:
-            ET.SubElement(ch_el, "icon", src=logos[cid])
+            icon_src = _proxy_url(base_url, logos[cid]) if base_url else logos[cid]
+            ET.SubElement(ch_el, "icon", src=icon_src)
 
     for prog in programmes:
         start_iso, stop_iso = prog["start"], prog["stop"]
@@ -206,7 +213,8 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
         if prog["desc"]:
             ET.SubElement(p, "desc", lang="da").text = prog["desc"]
         if prog["icon"]:
-            ET.SubElement(p, "icon", src=prog["icon"])
+            icon_src = _proxy_url(base_url, prog["icon"]) if base_url else prog["icon"]
+            ET.SubElement(p, "icon", src=icon_src)
 
         season, episode = prog["season"], prog["episode"]
         if season is not None and episode is not None:
@@ -245,7 +253,11 @@ def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_u
     for channel_id, hls_url in sorted(stream_urls.items()):
         name = channel_names.get(channel_id, channel_id)
         proxy_url = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="")
-        logo_attr = f' tvg-logo="{logos[channel_id]}"' if channel_id in logos else ""
+        if channel_id in logos:
+            logo_src = _proxy_url(base_url, logos[channel_id])
+            logo_attr = f' tvg-logo="{logo_src}"'
+        else:
+            logo_attr = ""
         lines.append(
             f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}"'
             f'{logo_attr} group-title="DR",'
@@ -428,7 +440,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                         break
 
             results = [_epg_cache[d] for d in dates]
-            xml_bytes = build_xmltv(results, dr_to_key, load_logos())
+            xml_bytes = build_xmltv(results, dr_to_key, load_logos(), self._base_url())
         except Exception as exc:
             log.exception("Error building EPG")
             self.send_error(500, str(exc))
