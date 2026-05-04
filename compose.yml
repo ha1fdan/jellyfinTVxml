@@ -4,7 +4,6 @@ services:
     image: ghcr.io/ha1fdan/jellyfin-tvxml:latest
     container_name: jellyfin-tvxml
     restart: unless-stopped
-    ports:
-      - "8765:8765"
+    network_mode: host   # share host network — avoids CDN blocking Docker bridge IPs
     volumes:
       - ./streams.json:/app/streams.json:ro
