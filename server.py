@@ -19,6 +19,7 @@ import concurrent.futures
 import http.server
 import io
 import json
+import time
 import logging
 import os
 import socket
@@ -44,6 +45,7 @@ HOST = "0.0.0.0"
 PORT = 8765
 PROXY_IMAGES = os.environ.get("PROXY_IMAGES", "").lower() in ("1", "true", "yes")
 PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "").lower() in ("1", "true", "yes")
+EPG_CACHE_TTL = int(os.environ.get("EPG_CACHE_TTL", "3600"))  # seconds; default 1 hour
 
 # ---------------------------------------------------------------------------
 # Channel list (all IDs from the original DR schedule URLs)
@@ -383,8 +385,9 @@ def rewrite_m3u8(content: bytes, upstream_url: str, proxy_base: str) -> bytes:
 # HTTP handler
 # ---------------------------------------------------------------------------
 
-# Simple in-process cache: {date_str -> list[dict]}  (schedules data)
+# EPG cache: {date_str -> list[dict]} with a parallel timestamp dict for TTL expiry
 _epg_cache: dict[str, list[dict]] = {}
+_epg_cache_time: dict[str, float] = {}
 # Channel name cache populated after first EPG fetch
 _channel_names: dict[str, str] = {}
 
@@ -430,11 +433,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # Reverse: {dr_api_id -> stream_key} for renaming channel IDs in output
             dr_to_key = {v: k for k, v in channel_id_map.items()}
 
-            uncached = [d for d in dates if d not in _epg_cache]
+            now = time.monotonic()
+            uncached = [
+                d for d in dates
+                if d not in _epg_cache or now - _epg_cache_time.get(d, 0) > EPG_CACHE_TTL
+            ]
             if uncached:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max(len(uncached), 1)) as ex:
                     for d, result in zip(uncached, ex.map(fetch_schedules_for_date, uncached)):
                         _epg_cache[d] = result
+                        _epg_cache_time[d] = now
                         # Populate channel name cache (keyed by stream key, not DR API ID)
                         for block in result:
                             raw_cid = block["channelId"]
