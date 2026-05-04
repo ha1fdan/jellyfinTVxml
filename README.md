@@ -1,4 +1,5 @@
-[![Build & Push Docker Image](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml/badge.svg)](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml)
+[![Build & Push Docker Image](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml/badge.svg)](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml) [![GitHub License](https://img.shields.io/github/license/ha1fdan/jellyfinTVxml?label=License)](https://github.com/ha1fdan/jellyfinTVxml/blob/main/LICENSE) [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff)](#) [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](#) [![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=fff)](#) 
+
 
 # jellyfin-tvxml
 
