@@ -391,7 +391,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    server = http.server.HTTPServer((HOST, PORT), Handler)
+    server = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     log.info("Server listening on http://%s:%d", HOST, PORT)
     log.info("  EPG:      http://%s:%d/epg.xml", HOST, PORT)
     log.info("  Playlist: http://%s:%d/channels.m3u", HOST, PORT)
