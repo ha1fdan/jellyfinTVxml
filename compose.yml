@@ -5,5 +5,12 @@ services:
     container_name: jellyfin-tvxml
     restart: unless-stopped
     network_mode: host   # share host network — avoids CDN blocking Docker bridge IPs
+    env_file:
+      - path: .env
+        required: false   # omit this block entirely if you don't need a proxy
+    # Alternatively, set inline (overrides .env):
+    # environment:
+    #   - HTTP_PROXY=http://user:pass@proxy.host:3128
     volumes:
       - ./streams.json:/app/streams.json:ro
+      - ./channel_ids.json:/app/channel_ids.json:ro

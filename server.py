@@ -11,7 +11,8 @@ Endpoints:
   GET /proxy?url=<encoded>  — HLS proxy (rewrites relative URLs so Jellyfin
                               can follow the full playlist chain)
 
-Configure stream URLs in streams.json (channel_id -> HLS master URL).
+Configure stream URLs in streams.json (stream_key -> HLS master URL).
+Optionally map friendly stream keys to DR API channel IDs in channel_ids.json.
 """
 
 import concurrent.futures
@@ -78,13 +79,27 @@ COMMON_PARAMS = {
 # Stream URL config  (loaded from streams.json next to this file)
 # ---------------------------------------------------------------------------
 _STREAMS_FILE = os.path.join(os.path.dirname(__file__), "streams.json")
+_CHANNEL_IDS_FILE = os.path.join(os.path.dirname(__file__), "channel_ids.json")
 
 
 def load_stream_urls() -> dict[str, str]:
-    """Return {channel_id: hls_master_url} from streams.json, or {} if missing."""
+    """Return {stream_key: hls_master_url} from streams.json, or {} if missing."""
     if not os.path.exists(_STREAMS_FILE):
         return {}
     with open(_STREAMS_FILE) as f:
+        return json.load(f)
+
+
+def load_channel_id_map() -> dict[str, str]:
+    """Return {stream_key: dr_channel_id} from channel_ids.json, or {} if missing.
+
+    When a stream key (e.g. 'DR1') differs from the DR API channel ID (e.g. '20875'),
+    this map lets the server fetch EPG by the API ID while using the friendly key
+    as the tvg-id in M3U and channel id in XMLTV, so Jellyfin can match them.
+    """
+    if not os.path.exists(_CHANNEL_IDS_FILE):
+        return {}
+    with open(_CHANNEL_IDS_FILE) as f:
         return json.load(f)
 
 
@@ -99,7 +114,7 @@ def fetch_schedules_for_date(target_date: str) -> list[dict]:
     url = BASE_URL + "?" + urllib.parse.urlencode(params)
     log.info("Fetching schedules %s", url)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with _opener.open(req, timeout=30) as resp:
         return json.load(resp)
 
 
@@ -116,13 +131,21 @@ def xmltv_timestamp(iso_str: str) -> str:
     return f"{dt_clean} {sign}{offset_clean}"
 
 
-def build_xmltv(channel_data_by_day: list[list[dict]]) -> bytes:
-    channels: dict[str, str] = {}  # channelId -> display name
+def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None) -> bytes:
+    """Build XMLTV XML.
+
+    dr_to_key: optional {dr_api_channel_id -> stream_key} rename map so that
+    channel ids in the output match the tvg-id values in the M3U playlist.
+    """
+    if dr_to_key is None:
+        dr_to_key = {}
+    channels: dict[str, str] = {}  # (renamed) channelId -> display name
     programmes: list[dict] = []
 
     for day_data in channel_data_by_day:
         for channel_block in day_data:
-            channel_id = channel_block["channelId"]
+            raw_id = channel_block["channelId"]
+            channel_id = dr_to_key.get(raw_id, raw_id)
             for sched in channel_block.get("schedules", []):
                 item = sched.get("item", {})
                 if channel_id not in channels:
@@ -229,9 +252,32 @@ _SSL_CTX = ssl.create_default_context()
 _FETCH_TIMEOUT = 10  # seconds — hard deadline including DNS + SSL + read
 
 
+def _build_opener() -> urllib.request.OpenerDirector:
+    """Build a urllib opener, optionally routing through an HTTP proxy.
+
+    Reads HTTP_PROXY (or HTTPS_PROXY) from the environment. The URL may embed
+    credentials:  http://user:pass@proxy.host:3128
+    """
+    proxy_url = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+    handlers: list = [urllib.request.HTTPSHandler(context=_SSL_CTX)]
+    if proxy_url:
+        parsed = urllib.parse.urlparse(proxy_url)
+        handlers.append(urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        if parsed.username:
+            mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+            mgr.add_password(None, proxy_url, parsed.username, parsed.password or "")
+            handlers.append(urllib.request.ProxyBasicAuthHandler(mgr))
+        log.info("Outbound requests routed via proxy: %s://%s:%s",
+                 parsed.scheme, parsed.hostname, parsed.port)
+    return urllib.request.build_opener(*handlers)
+
+
+_opener = _build_opener()
+
+
 def _do_fetch(url: str) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers=_PROXY_HEADERS)
-    with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT, context=_SSL_CTX) as resp:
+    with _opener.open(req, timeout=_FETCH_TIMEOUT) as resp:
         ct = resp.headers.get("Content-Type", "application/octet-stream")
         # Read up to 4 MB — playlists are tiny; this prevents hanging on a
         # streaming/chunked response that never sends EOF.
@@ -340,14 +386,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         log.info("EPG request for dates: %s", dates)
         try:
+            channel_id_map = load_channel_id_map()
+            # Reverse: {dr_api_id -> stream_key} for renaming channel IDs in output
+            dr_to_key = {v: k for k, v in channel_id_map.items()}
+
             uncached = [d for d in dates if d not in _epg_cache]
             if uncached:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max(len(uncached), 1)) as ex:
                     for d, result in zip(uncached, ex.map(fetch_schedules_for_date, uncached)):
                         _epg_cache[d] = result
-                        # Populate channel name cache
+                        # Populate channel name cache (keyed by stream key, not DR API ID)
                         for block in result:
-                            cid = block["channelId"]
+                            raw_cid = block["channelId"]
+                            cid = dr_to_key.get(raw_cid, raw_cid)
                             if cid not in _channel_names:
                                 for sched in block.get("schedules", []):
                                     item = sched.get("item", {})
@@ -359,7 +410,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                         break
 
             results = [_epg_cache[d] for d in dates]
-            xml_bytes = build_xmltv(results)
+            xml_bytes = build_xmltv(results, dr_to_key)
         except Exception as exc:
             log.exception("Error building EPG")
             self.send_error(500, str(exc))

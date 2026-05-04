@@ -6,10 +6,9 @@ WORKDIR /app
 
 COPY server.py .
 
-# streams.json is bind-mounted at runtime:
-#   -v /path/to/streams.json:/app/streams.json
-# Provide an empty default so the container starts without it.
-RUN echo '{}' > streams.json
+# streams.json and channel_ids.json are bind-mounted at runtime (see compose.yml).
+# Provide empty defaults so the container starts without them.
+RUN echo '{}' > streams.json && echo '{}' > channel_ids.json
 
 EXPOSE 8765
 
