@@ -1,0 +1,6 @@
+{
+  "DR1": "https://prod95-static.dr-massive.com/api/shain/v1/dataservice/ResizeImage/$value?Format=%27png%27&Quality=100&EntityType=%27Item%27&EntityId=%2720875%27&ImageId=%272344194%27&ResizeAction=%27fill%27&HorizontalAlignment=%27center%27&VerticalAlignment=%27top%27",
+  "DR2": "https://prod95-static.dr-massive.com/api/shain/v1/dataservice/ResizeImage/$value?Format=%27png%27&Quality=100&EntityType=%27Item%27&EntityId=%2720876%27&ImageId=%272344196%27&ResizeAction=%27fill%27&HorizontalAlignment=%27center%27&VerticalAlignment=%27top%27",
+  "TVA": "https://prod95-static.dr-massive.com/api/shain/v1/dataservice/ResizeImage/$value?Format=%27png%27&Quality=100&EntityType=%27Item%27&EntityId=%27192099%27&ImageId=%2716100142%27&ResizeAction=%27fill%27&HorizontalAlignment=%27center%27&VerticalAlignment=%27top%27",
+  "DR Ramasjang": "https://prod95-static.dr-massive.com/api/shain/v1/dataservice/ResizeImage/$value?Format=%27png%27&Quality=100&EntityType=%27Item%27&EntityId=%2720892%27&ImageId=%276679944%27&ResizeAction=%27fill%27&HorizontalAlignment=%27center%27&VerticalAlignment=%27top%27"
+}

@@ -80,6 +80,7 @@ COMMON_PARAMS = {
 # ---------------------------------------------------------------------------
 _STREAMS_FILE = os.path.join(os.path.dirname(__file__), "streams.json")
 _CHANNEL_IDS_FILE = os.path.join(os.path.dirname(__file__), "channel_ids.json")
+_LOGOS_FILE = os.path.join(os.path.dirname(__file__), "logos.json")
 
 
 def load_stream_urls() -> dict[str, str]:
@@ -87,6 +88,14 @@ def load_stream_urls() -> dict[str, str]:
     if not os.path.exists(_STREAMS_FILE):
         return {}
     with open(_STREAMS_FILE) as f:
+        return json.load(f)
+
+
+def load_logos() -> dict[str, str]:
+    """Return {stream_key: logo_url} from logos.json, or {} if missing."""
+    if not os.path.exists(_LOGOS_FILE):
+        return {}
+    with open(_LOGOS_FILE) as f:
         return json.load(f)
 
 
@@ -131,14 +140,17 @@ def xmltv_timestamp(iso_str: str) -> str:
     return f"{dt_clean} {sign}{offset_clean}"
 
 
-def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None) -> bytes:
+def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None, logos: dict[str, str] | None = None) -> bytes:
     """Build XMLTV XML.
 
     dr_to_key: optional {dr_api_channel_id -> stream_key} rename map so that
     channel ids in the output match the tvg-id values in the M3U playlist.
+    logos: optional {stream_key -> logo_url} for channel icon elements.
     """
     if dr_to_key is None:
         dr_to_key = {}
+    if logos is None:
+        logos = {}
     channels: dict[str, str] = {}  # (renamed) channelId -> display name
     programmes: list[dict] = []
 
@@ -174,6 +186,8 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
         ch_el = ET.SubElement(tv, "channel", id=cid)
         dn = ET.SubElement(ch_el, "display-name")
         dn.text = cname
+        if cid in logos:
+            ET.SubElement(ch_el, "icon", src=logos[cid])
 
     for prog in programmes:
         start_iso, stop_iso = prog["start"], prog["stop"]
@@ -218,19 +232,23 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
 # M3U helpers
 # ---------------------------------------------------------------------------
 
-def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_url: str) -> bytes:
+def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_url: str, logos: dict[str, str] | None = None) -> bytes:
     """
     Build an M3U playlist where each stream URL goes through the local proxy.
     channel_names: {channel_id -> display name}  (populated from EPG data)
     base_url: e.g. 'http://192.168.1.10:8765'
+    logos: optional {channel_id -> logo_url}
     """
+    if logos is None:
+        logos = {}
     lines = ["#EXTM3U"]
     for channel_id, hls_url in sorted(stream_urls.items()):
         name = channel_names.get(channel_id, channel_id)
         proxy_url = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="")
+        logo_attr = f' tvg-logo="{logos[channel_id]}"' if channel_id in logos else ""
         lines.append(
-            f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}" '
-            f'group-title="DR",'
+            f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}"'
+            f'{logo_attr} group-title="DR",'
             f'{name}'
         )
         lines.append(proxy_url)
@@ -410,7 +428,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                         break
 
             results = [_epg_cache[d] for d in dates]
-            xml_bytes = build_xmltv(results, dr_to_key)
+            xml_bytes = build_xmltv(results, dr_to_key, load_logos())
         except Exception as exc:
             log.exception("Error building EPG")
             self.send_error(500, str(exc))
@@ -425,7 +443,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not stream_urls:
             self.send_error(404, "No streams configured — create streams.json")
             return
-        m3u = build_m3u(stream_urls, _channel_names, self._base_url())
+        m3u = build_m3u(stream_urls, _channel_names, self._base_url(), load_logos())
         self._respond(200, "application/x-mpegurl; charset=utf-8", m3u)
 
     # -- HLS proxy ------------------------------------------------------------
