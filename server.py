@@ -494,7 +494,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (ConnectionResetError, BrokenPipeError):
+            pass  # client disconnected mid-transfer — not an error
 
 
 # ---------------------------------------------------------------------------
