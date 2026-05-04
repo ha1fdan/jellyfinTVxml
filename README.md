@@ -1,3 +1,5 @@
+[![Build & Push Docker Image](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml/badge.svg)](https://github.com/ha1fdan/jellyfinTVxml/actions/workflows/docker.yml)
+
 # jellyfin-tvxml
 
 A lightweight Docker service that provides Jellyfin with a live TV channel list (M3U) and programme guide (XMLTV) sourced from DR's schedule API.
