@@ -457,7 +457,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                     ).get("BroadcastChannel")
                                     if name:
                                         _channel_names[cid] = name
-                                            break
+                                        break
 
             results = [_epg_cache[d] for d in dates]
             xml_bytes = build_xmltv(results, dr_to_key, load_logos(), self._base_url())
