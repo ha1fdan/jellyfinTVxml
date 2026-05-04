@@ -412,7 +412,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             days = int(query.get("days", ["7"])[0])
             today = date.today()
-            dates = [(today + timedelta(days=i)).isoformat() for i in range(days)]
+            # Start from yesterday: the DR API returns 24h from hour=22, so
+            # yesterday's window (22:00 yesterday → 22:00 today) covers today's
+            # daytime programmes that would otherwise be missing.
+            dates = [(today + timedelta(days=i)).isoformat() for i in range(-1, days)]
 
         log.info("EPG request for dates: %s", dates)
         try:

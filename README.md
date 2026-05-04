@@ -82,8 +82,6 @@ The `compose.yml` loads `.env` automatically if present. You can also set it inl
 
 ## Adding to Jellyfin
 
-<!-- screenshot goes here -->
-
 1. In Jellyfin, go to **Dashboard > Live TV**
 2. Add a **TV Tuner** — choose **M3U Tuner** and set the URL to:
    ```
@@ -94,3 +92,21 @@ The `compose.yml` loads `.env` automatically if present. You can also set it inl
    http://<host-ip>:8765/epg.xml
    ```
 4. Save and let Jellyfin refresh the guide.
+
+![XMLTV settings in Jellyfin showing the EPG URL configured to the local service](.github/screenshots/xmltv-settings.png)
+
+*XMLTV guide data provider configured with the local EPG endpoint and category mappings.*
+
+## Screenshots
+
+![Jellyfin Live TV channels view showing DR channel logos](.github/screenshots/channels.png)
+
+*Channels view — DR channel logos are fetched automatically and displayed in Jellyfin.*
+
+![Jellyfin Live TV guide showing a week of EPG data across DR channels](.github/screenshots/guide.png)
+
+*Programme guide — 7 days of schedule data sourced from the DR API.*
+
+![Jellyfin Programs view with shows, movies, and sports categorised from EPG data](.github/screenshots/shows.png)
+
+*Programs view — EPG categories (movies, children's, news, sports) are mapped so Jellyfin can sort content correctly.*
