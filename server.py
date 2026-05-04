@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 
 HOST = "0.0.0.0"
 PORT = 8765
+PROXY_IMAGES = os.environ.get("PROXY_IMAGES", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Channel list (all IDs from the original DR schedule URLs)
@@ -193,7 +194,7 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
         dn = ET.SubElement(ch_el, "display-name")
         dn.text = cname
         if cid in logos:
-            icon_src = _proxy_url(base_url, logos[cid]) if base_url else logos[cid]
+            icon_src = _proxy_url(base_url, logos[cid]) if (base_url and PROXY_IMAGES) else logos[cid]
             ET.SubElement(ch_el, "icon", src=icon_src)
 
     for prog in programmes:
@@ -213,7 +214,7 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
         if prog["desc"]:
             ET.SubElement(p, "desc", lang="da").text = prog["desc"]
         if prog["icon"]:
-            icon_src = _proxy_url(base_url, prog["icon"]) if base_url else prog["icon"]
+            icon_src = _proxy_url(base_url, prog["icon"]) if (base_url and PROXY_IMAGES) else prog["icon"]
             ET.SubElement(p, "icon", src=icon_src)
 
         season, episode = prog["season"], prog["episode"]
@@ -254,7 +255,7 @@ def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_u
         name = channel_names.get(channel_id, channel_id)
         proxy_url = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="")
         if channel_id in logos:
-            logo_src = _proxy_url(base_url, logos[channel_id])
+            logo_src = _proxy_url(base_url, logos[channel_id]) if PROXY_IMAGES else logos[channel_id]
             logo_attr = f' tvg-logo="{logo_src}"'
         else:
             logo_attr = ""

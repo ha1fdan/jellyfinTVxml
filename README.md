@@ -70,15 +70,34 @@ docker compose up -d --build
 
 The service listens on port `8765`.
 
-### 3. HTTP proxy (optional)
+### 3. Channel logos (optional)
 
-If your outbound traffic needs to go through an HTTP proxy, copy `.env.example` to `.env` and fill in your proxy URL:
+Create `logos.json` to map channel keys to logo image URLs:
 
+```json
+{
+  "DR1": "https://example.com/logos/dr1.png",
+  "DR2": "https://example.com/logos/dr2.png"
+}
 ```
-HTTP_PROXY=http://user:pass@proxy.host:3128
+
+Mount it alongside the other config files:
+
+```yaml
+volumes:
+  - ./logos.json:/app/logos.json:ro
 ```
 
-The `compose.yml` loads `.env` automatically if present. You can also set it inline under `environment:` in the compose file.
+### 4. Environment variables (optional)
+
+Copy `.env.example` to `.env` and set any of the following:
+
+| Variable | Description |
+|---|---|
+| `HTTP_PROXY` / `HTTPS_PROXY` | Route all outbound requests through an HTTP proxy |
+| `PROXY_IMAGES` | Set to `true` to proxy channel logos and programme thumbnails through the local server (useful if Jellyfin can't reach external image hosts) |
+
+The `compose.yml` loads `.env` automatically if present.
 
 ## Adding to Jellyfin
 

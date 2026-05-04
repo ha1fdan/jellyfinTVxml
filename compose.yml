@@ -14,3 +14,4 @@ services:
     volumes:
       - ./streams.json:/app/streams.json:ro
       - ./channel_ids.json:/app/channel_ids.json:ro
+      - ./logos.json:/app/logos.json:ro
