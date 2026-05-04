@@ -50,7 +50,8 @@ services:
     image: ghcr.io/ha1fdan/jellyfin-tvxml:latest
     container_name: jellyfin-tvxml
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8765:8765"
     volumes:
       - ./streams.json:/app/streams.json:ro
       - ./channel_ids.json:/app/channel_ids.json:ro
