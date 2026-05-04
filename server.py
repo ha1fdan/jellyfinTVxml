@@ -43,6 +43,7 @@ log = logging.getLogger(__name__)
 HOST = "0.0.0.0"
 PORT = 8765
 PROXY_IMAGES = os.environ.get("PROXY_IMAGES", "").lower() in ("1", "true", "yes")
+PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "true").lower() not in ("0", "false", "no")
 
 # ---------------------------------------------------------------------------
 # Channel list (all IDs from the original DR schedule URLs)
@@ -253,7 +254,7 @@ def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_u
     lines = ["#EXTM3U"]
     for channel_id, hls_url in sorted(stream_urls.items()):
         name = channel_names.get(channel_id, channel_id)
-        proxy_url = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="")
+        stream_src = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="") if PROXY_STREAMS else hls_url
         if channel_id in logos:
             logo_src = _proxy_url(base_url, logos[channel_id]) if PROXY_IMAGES else logos[channel_id]
             logo_attr = f' tvg-logo="{logo_src}"'
@@ -264,7 +265,7 @@ def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_u
             f'{logo_attr} group-title="DR",'
             f'{name}'
         )
-        lines.append(proxy_url)
+        lines.append(stream_src)
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 

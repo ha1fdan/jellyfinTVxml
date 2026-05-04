@@ -96,6 +96,7 @@ Copy `.env.example` to `.env` and set any of the following:
 | Variable | Description |
 |---|---|
 | `HTTP_PROXY` / `HTTPS_PROXY` | Route all outbound requests through an HTTP proxy |
+| `PROXY_STREAMS` | Set to `false` to pass HLS stream URLs directly to Jellyfin, bypassing the local proxy (default: `true`) |
 | `PROXY_IMAGES` | Set to `true` to proxy channel logos and programme thumbnails through the local server (useful if Jellyfin can't reach external image hosts) |
 
 The `compose.yml` loads `.env` automatically if present.
