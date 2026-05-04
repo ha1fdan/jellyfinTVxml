@@ -21,17 +21,20 @@ import json
 import logging
 import os
 import socket
+import ssl
 import urllib.parse
 import urllib.request
 from datetime import date, timedelta
 from xml.etree import ElementTree as ET
 
-# Force IPv4 — Docker containers often lack IPv6 routes, causing
-# "Network is unreachable" when the resolver returns an AAAA record first.
+# Force IPv4 — Docker bridge networks often lack IPv6 routes.
 _real_getaddrinfo = socket.getaddrinfo
 def _ipv4_getaddrinfo(host, port, family=0, *args, **kwargs):
     return _real_getaddrinfo(host, port, socket.AF_INET, *args, **kwargs)
 socket.getaddrinfo = _ipv4_getaddrinfo
+
+# Global socket timeout covers DNS + SSL handshake (urlopen timeout does not).
+socket.setdefaulttimeout(10)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -222,13 +225,27 @@ _PROXY_HEADERS = {
     "Referer": "https://www.dr.dk/",
 }
 
+_SSL_CTX = ssl.create_default_context()
+_FETCH_TIMEOUT = 10  # seconds — hard deadline including DNS + SSL + read
+
+
+def _do_fetch(url: str) -> tuple[bytes, str]:
+    req = urllib.request.Request(url, headers=_PROXY_HEADERS)
+    with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT, context=_SSL_CTX) as resp:
+        ct = resp.headers.get("Content-Type", "application/octet-stream")
+        # Read up to 4 MB — playlists are tiny; this prevents hanging on a
+        # streaming/chunked response that never sends EOF.
+        return resp.read(4 * 1024 * 1024), ct
+
 
 def fetch_upstream(url: str) -> tuple[bytes, str]:
-    """Fetch a URL and return (body_bytes, content_type)."""
-    req = urllib.request.Request(url, headers=_PROXY_HEADERS)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        ct = resp.headers.get("Content-Type", "application/octet-stream")
-        return resp.read(), ct
+    """Fetch a URL with a hard thread-level timeout."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        future = ex.submit(_do_fetch, url)
+        try:
+            return future.result(timeout=_FETCH_TIMEOUT + 2)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"upstream fetch timed out: {url}")
 
 
 def rewrite_m3u8(content: bytes, upstream_url: str, proxy_base: str) -> bytes:
