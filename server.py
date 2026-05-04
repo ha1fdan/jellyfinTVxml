@@ -20,10 +20,18 @@ import io
 import json
 import logging
 import os
+import socket
 import urllib.parse
 import urllib.request
 from datetime import date, timedelta
 from xml.etree import ElementTree as ET
+
+# Force IPv4 — Docker containers often lack IPv6 routes, causing
+# "Network is unreachable" when the resolver returns an AAAA record first.
+_real_getaddrinfo = socket.getaddrinfo
+def _ipv4_getaddrinfo(host, port, family=0, *args, **kwargs):
+    return _real_getaddrinfo(host, port, socket.AF_INET, *args, **kwargs)
+socket.getaddrinfo = _ipv4_getaddrinfo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
