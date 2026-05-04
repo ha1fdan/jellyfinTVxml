@@ -169,10 +169,15 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
             for sched in channel_block.get("schedules", []):
                 item = sched.get("item", {})
                 if channel_id not in channels:
-                    name = item.get("broadcastChannel") or item.get(
-                        "customFields", {}
-                    ).get("BroadcastChannel", channel_id)
-                    channels[channel_id] = name
+                    # If the channel was remapped to a friendly key, use that
+                    # key as the display name so Jellyfin sees e.g. "TVA" not "DRTV"
+                    if raw_id != channel_id:
+                        channels[channel_id] = channel_id
+                    else:
+                        name = item.get("broadcastChannel") or item.get(
+                            "customFields", {}
+                        ).get("BroadcastChannel", channel_id)
+                        channels[channel_id] = name
                 programmes.append(
                     {
                         "channel_id": channel_id,
@@ -435,14 +440,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             raw_cid = block["channelId"]
                             cid = dr_to_key.get(raw_cid, raw_cid)
                             if cid not in _channel_names:
-                                for sched in block.get("schedules", []):
-                                    item = sched.get("item", {})
-                                    name = item.get("broadcastChannel") or item.get(
-                                        "customFields", {}
-                                    ).get("BroadcastChannel")
-                                    if name:
-                                        _channel_names[cid] = name
-                                        break
+                                if raw_cid != cid:
+                                    _channel_names[cid] = cid
+                                else:
+                                    for sched in block.get("schedules", []):
+                                        item = sched.get("item", {})
+                                        name = item.get("broadcastChannel") or item.get(
+                                            "customFields", {}
+                                        ).get("BroadcastChannel")
+                                        if name:
+                                            _channel_names[cid] = name
+                                            break
 
             results = [_epg_cache[d] for d in dates]
             xml_bytes = build_xmltv(results, dr_to_key, load_logos(), self._base_url())
