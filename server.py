@@ -443,21 +443,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     for d, result in zip(uncached, ex.map(fetch_schedules_for_date, uncached)):
                         _epg_cache[d] = result
                         _epg_cache_time[d] = now
-                        # Populate channel name cache (keyed by stream key, not DR API ID)
+                        # Refresh channel name cache (keyed by stream key, not DR API ID)
                         for block in result:
                             raw_cid = block["channelId"]
                             cid = dr_to_key.get(raw_cid, raw_cid)
-                            if cid not in _channel_names:
-                                if raw_cid != cid:
-                                    _channel_names[cid] = cid
-                                else:
-                                    for sched in block.get("schedules", []):
-                                        item = sched.get("item", {})
-                                        name = item.get("broadcastChannel") or item.get(
-                                            "customFields", {}
-                                        ).get("BroadcastChannel")
-                                        if name:
-                                            _channel_names[cid] = name
+                            if raw_cid != cid:
+                                _channel_names[cid] = cid
+                            elif cid not in _channel_names:
+                                for sched in block.get("schedules", []):
+                                    item = sched.get("item", {})
+                                    name = item.get("broadcastChannel") or item.get(
+                                        "customFields", {}
+                                    ).get("BroadcastChannel")
+                                    if name:
+                                        _channel_names[cid] = name
                                             break
 
             results = [_epg_cache[d] for d in dates]
