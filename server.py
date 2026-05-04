@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 HOST = "0.0.0.0"
 PORT = 8765
 PROXY_IMAGES = os.environ.get("PROXY_IMAGES", "").lower() in ("1", "true", "yes")
-PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "true").lower() not in ("0", "false", "no")
+PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Channel list (all IDs from the original DR schedule URLs)
