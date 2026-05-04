@@ -3,8 +3,18 @@ name: Build & Push Docker Image
 on:
   push:
     branches: [main]
+    paths:
+      - 'server.py'
+      - 'Dockerfile'
+      - 'compose.yml'
+      - '.github/workflows/docker.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'server.py'
+      - 'Dockerfile'
+      - 'compose.yml'
+      - '.github/workflows/docker.yml'
 
 env:
   REGISTRY: ghcr.io
