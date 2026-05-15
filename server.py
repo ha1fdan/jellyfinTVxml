@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 HOST = "0.0.0.0"
 PORT = 8765
 PROXY_IMAGES = os.environ.get("PROXY_IMAGES", "").lower() in ("1", "true", "yes")
-PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "true").lower() not in ("0", "false", "no")
+PROXY_STREAMS = os.environ.get("PROXY_STREAMS", "").lower() in ("1", "true", "yes")
 EPG_CACHE_TTL = int(os.environ.get("EPG_CACHE_TTL", "3600"))  # seconds; default 1 hour
 
 # ---------------------------------------------------------------------------
@@ -83,39 +83,8 @@ COMMON_PARAMS = {
 # Stream URL config  (loaded from streams.json next to this file)
 # ---------------------------------------------------------------------------
 _STREAMS_FILE = os.path.join(os.path.dirname(__file__), "streams.json")
-_CHANNELS2_FILE = os.path.join(os.path.dirname(__file__), "channels2.json")
 _CHANNEL_IDS_FILE = os.path.join(os.path.dirname(__file__), "channel_ids.json")
 _LOGOS_FILE = os.path.join(os.path.dirname(__file__), "logos.json")
-
-
-def load_stream_config() -> tuple[dict[str, str], dict[str, str]]:
-    """Return ({channel_id: stream_url}, {channel_id: display_name}).
-
-    Checks, in order:
-      1. CHANNELS_FILE env var (absolute path to a channels2.json-style file)
-      2. channels2.json next to this script
-      3. streams.json next to this script (legacy dict format, no display names)
-
-    channels2.json format: list of {name, slug, streamUrl, ...}
-    streams.json format:   dict {stream_key: url}
-    """
-    channels_file = os.environ.get("CHANNELS_FILE")
-    if not channels_file:
-        if os.path.exists(_CHANNELS2_FILE):
-            channels_file = _CHANNELS2_FILE
-    if channels_file and os.path.exists(channels_file):
-        with open(channels_file) as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            urls = {ch["slug"]: ch["streamUrl"] for ch in data}
-            names = {ch["slug"]: ch["name"] for ch in data}
-            return urls, names
-        # Dict format (same as streams.json)
-        return data, {}
-    if os.path.exists(_STREAMS_FILE):
-        with open(_STREAMS_FILE) as f:
-            return json.load(f), {}
-    return {}, {}
 
 
 def load_stream_urls() -> dict[str, str]:
@@ -178,15 +147,6 @@ def xmltv_timestamp(iso_str: str) -> str:
 def _proxy_url(base_url: str, url: str) -> str:
     """Return url routed through the local /proxy endpoint."""
     return base_url + "/proxy?url=" + urllib.parse.quote(url, safe="")
-
-
-def _is_drtv_stream(url: str) -> bool:
-    """Return True for DR's own CDN streams that don't need the local proxy."""
-    try:
-        host = urllib.parse.urlparse(url).hostname or ""
-        return host.startswith("drlive") or host.startswith("drtvd")
-    except Exception:
-        return False
 
 
 def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str] | None = None, logos: dict[str, str] | None = None, base_url: str = "") -> bytes:
@@ -289,33 +249,27 @@ def build_xmltv(channel_data_by_day: list[list[dict]], dr_to_key: dict[str, str]
 # M3U helpers
 # ---------------------------------------------------------------------------
 
-def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_url: str, logos: dict[str, str] | None = None, tvg_ids: dict[str, str] | None = None) -> bytes:
+def build_m3u(stream_urls: dict[str, str], channel_names: dict[str, str], base_url: str, logos: dict[str, str] | None = None) -> bytes:
     """
     Build an M3U playlist where each stream URL goes through the local proxy.
     channel_names: {channel_id -> display name}  (populated from EPG data)
     base_url: e.g. 'http://192.168.1.10:8765'
     logos: optional {channel_id -> logo_url}
-    tvg_ids: optional {channel_id -> epg_channel_id} override for tvg-id attribute;
-             used when serving an external EPG file whose channel IDs differ from slugs
     """
     if logos is None:
         logos = {}
-    if tvg_ids is None:
-        tvg_ids = {}
     lines = ["#EXTM3U"]
     for channel_id, hls_url in sorted(stream_urls.items()):
         name = channel_names.get(channel_id, channel_id)
-        tvg_id = tvg_ids.get(channel_id, channel_id)
-        use_proxy = PROXY_STREAMS and not _is_drtv_stream(hls_url)
-        stream_src = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="") if use_proxy else hls_url
+        stream_src = base_url + "/proxy?url=" + urllib.parse.quote(hls_url, safe="") if PROXY_STREAMS else hls_url
         if channel_id in logos:
             logo_src = _proxy_url(base_url, logos[channel_id]) if PROXY_IMAGES else logos[channel_id]
             logo_attr = f' tvg-logo="{logo_src}"'
         else:
             logo_attr = ""
         lines.append(
-            f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}"'
-            f'{logo_attr} group-title="TV",'
+            f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{name}"'
+            f'{logo_attr} group-title="DR",'
             f'{name}'
         )
         lines.append(stream_src)
@@ -463,16 +417,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # -- EPG ------------------------------------------------------------------
 
     def _serve_epg(self, query):
-        epg_file = os.environ.get("EPG_FILE")
-        if epg_file:
-            if not os.path.exists(epg_file):
-                self.send_error(404, f"EPG_FILE not found: {epg_file}")
-                return
-            with open(epg_file, "rb") as fh:
-                body = fh.read()
-            self._respond(200, "application/xml; charset=utf-8", body)
-            return
-
         if "date" in query:
             dates = [query["date"][0]]
         else:
@@ -527,16 +471,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # -- M3U ------------------------------------------------------------------
 
     def _serve_m3u(self):
-        stream_urls, stream_names = load_stream_config()
+        stream_urls = load_stream_urls()
         if not stream_urls:
-            self.send_error(404, "No streams configured — create streams.json or channels2.json")
+            self.send_error(404, "No streams configured — create streams.json")
             return
-        # EPG-derived names take priority; stream_names fill in channels without EPG
-        merged_names = {**stream_names, **_channel_names}
-        # When serving an external EPG file, channel_ids.json maps slug → EPG channel ID
-        # so Jellyfin can match channels between the M3U tvg-id and the XMLTV channel id.
-        tvg_ids = load_channel_id_map() if os.environ.get("EPG_FILE") else None
-        m3u = build_m3u(stream_urls, merged_names, self._base_url(), load_logos(), tvg_ids=tvg_ids)
+        m3u = build_m3u(stream_urls, _channel_names, self._base_url(), load_logos())
         self._respond(200, "application/x-mpegurl; charset=utf-8", m3u)
 
     # -- HLS proxy ------------------------------------------------------------
